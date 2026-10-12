@@ -321,15 +321,28 @@ func (c *Client) FetchModels(a *auth.Auth) ([]ModelInfo, error) {
 
 // CheckinDeviceID 返回签到接口专用的设备 ID。
 //
-// 上游签到后端按 X-Device-Id 做设备级每日限额，且只认官方客户端的
-// aha-<hex> 形状；裸 hex 会被以 9074 拒绝（社区多人逆向验证）。
-// 已有 aha- 前缀的不动，保证同一账号始终映射到同一设备。
+// 上游签到后端按 X-Device-Id 做设备级每日限额：
+//   - 纯数字设备号：账号登录时绑定的真实设备 ID，原样发送（加前缀反而会被静默丢弃，code=0 但不加积分）。
+//   - hex 设备号：官方客户端形状为 aha-<hex>，裸 hex 会被以 9074 拒绝，故补 aha- 前缀。
+//   - 已有 aha- 前缀的不动，保证同一账号始终映射到同一设备。
+//   - 为空：无法签到（会被静默丢弃），调用方应告警并引导重新登录。
 func CheckinDeviceID(a *auth.Auth) string {
 	id := strings.TrimSpace(a.DeviceID)
 	if id == "" {
 		return ""
 	}
 	if strings.HasPrefix(id, "aha-") {
+		return id
+	}
+	// 纯数字：真实绑定的设备号，原样发送
+	isNumeric := true
+	for _, r := range id {
+		if r < '0' || r > '9' {
+			isNumeric = false
+			break
+		}
+	}
+	if isNumeric {
 		return id
 	}
 	return "aha-" + id

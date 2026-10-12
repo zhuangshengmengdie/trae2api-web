@@ -170,6 +170,11 @@ func (s *Scheduler) RunCheckinNow() []CheckinResult {
 func (s *Scheduler) checkinOne(a *auth.Auth, uid string) CheckinResult {
 	res := CheckinResult{UID: uid, Nick: a.Nickname}
 
+	// 设备号为空时签到会被上游静默丢弃（code=0 但不加积分），提前告警。
+	if upstream.CheckinDeviceID(a) == "" {
+		log.Printf("checkin %s: WARNING no device id, claim will be silently dropped; re-login needed", uid)
+	}
+
 	// 1. 签到前预刷新临期 token（2h 窗口），与 cmd/signin 保持一致。
 	refreshed, err := s.cfg.Upstream.RefreshTokenIfNeeded(a, 2*time.Hour)
 	if err != nil {

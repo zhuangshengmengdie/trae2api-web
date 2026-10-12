@@ -278,6 +278,8 @@ func TestCheckinDeviceIDNormalization(t *testing.T) {
 	}{
 		{"bare hex gets aha prefix", "3ee0250fe3e0e6e03cdd8054e3a01a7b", "aha-3ee0250fe3e0e6e03cdd8054e3a01a7b"},
 		{"prefixed id left alone", "aha-3ee0250fe3e0e6e03cdd8054e3a01a7b", "aha-3ee0250fe3e0e6e03cdd8054e3a01a7b"},
+		{"numeric id sent as-is (real bound device)", "9372561887430416", "9372561887430416"},
+		{"numeric with whitespace", "  9372561887430416 \n", "9372561887430416"},
 		{"whitespace trimmed", "  abc123 \n", "aha-abc123"},
 		{"empty stays empty", "", ""},
 	}
