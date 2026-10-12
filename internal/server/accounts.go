@@ -158,9 +158,11 @@ func (h *Handler) importFromCallback(req importRequest) (*auth.Auth, error) {
 		return nil, err
 	}
 	// 无 refreshToken 但有 accessToken（userJwt 兜底）→ 直接用，不 ExchangeToken
-	// deviceID 优先用请求里带的；没有则用回调里的 loginTraceID（Trae 生成的纯数字真实设备号）。
+	// deviceID 优先用请求里带的；没有则用回调里的 loginTraceID。
+	// loginTraceID 是登录时生成的 deviceID 的后 16 字符（hex）或 Trae 生成的数字 ID；
+	// 直接用作 deviceID，CheckinDeviceID 会按规则规范形状（hex 加 aha- 前缀，数字原样）。
 	deviceID := req.DeviceID
-	if deviceID == "" && isNumericID(info.LoginTraceID) {
+	if deviceID == "" && info.LoginTraceID != "" {
 		deviceID = info.LoginTraceID
 	}
 	a := &auth.Auth{
