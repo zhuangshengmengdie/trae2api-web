@@ -8,6 +8,7 @@ package server
 import (
 	"encoding/json"
 	"fmt"
+	"log"
 	"net/url"
 	"strconv"
 	"strings"
@@ -129,10 +130,24 @@ func ParseCallback(rawURL string) (*CallbackInfo, error) {
 		return nil, fmt.Errorf("parse callback url: %w", err)
 	}
 	q := u.Query()
+	// 调试：记录回调 URL 中的参数名（不记值，避免泄露 token）
+	var paramNames []string
+	for k := range q {
+		paramNames = append(paramNames, k)
+	}
+	log.Printf("ParseCallback: query params=%v", paramNames)
 	info := &CallbackInfo{
 		RefreshToken: q.Get("refreshToken"),
 		LoginTraceID: q.Get("loginTraceID"),
 	}
+	// 兼容不同的参数名大小写/下划线变体
+	if info.LoginTraceID == "" {
+		info.LoginTraceID = q.Get("login_trace_id")
+	}
+	if info.LoginTraceID == "" {
+		info.LoginTraceID = q.Get("logintraceid")
+	}
+	log.Printf("ParseCallback: loginTraceID=%q (numeric=%v)", info.LoginTraceID, isNumericID(info.LoginTraceID))
 
 	userInfo := parseJSONParam(q.Get("userInfo"))
 	info.UID = getString(userInfo, "UserID")
