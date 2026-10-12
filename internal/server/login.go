@@ -159,12 +159,16 @@ func (h *Handler) authorizeCallback(w http.ResponseWriter, r *http.Request) {
 	machineID := r.URL.Query().Get("machine_id")
 	deviceID := r.URL.Query().Get("device_id")
 	traceID := r.URL.Query().Get("loginTraceID")
-	// TRAE 回调不回传 machine_id/device_id，但回传 loginTraceID（= machineTraceID(machine,device) 派生）
-	// → 用 loginTraceID 反查 pending 拿回登录时生成的那一对 id，保证凭证与登录态一致
+	// TRAE 回调不回传 machine_id/device_id，也不原样返回我们发的 login_trace_id，
+	// 而是生成自己的纯数字 traceID；该数字 ID 即账号绑定的真实设备号。
+	// → 先尝试用 traceID 反查 pending 拿回登录时生成的那一对 id；
+	// → 查不到时，若 traceID 为纯数字，直接用作 deviceID（即真实绑定设备号）。
 	if machineID == "" || deviceID == "" {
 		if traceID != "" {
 			if pl, ok := h.getPendingByTrace(traceID); ok {
 				machineID, deviceID = pl.machineID, pl.deviceID
+			} else if isNumericID(traceID) {
+				deviceID = traceID
 			}
 		}
 	}
@@ -299,4 +303,17 @@ func randomHex(n int) (string, error) {
 		return "", err
 	}
 	return hex.EncodeToString(b), nil
+}
+
+// isNumericID 判断字符串是否为纯数字（Trae 绑定的真实设备号形状）。
+func isNumericID(s string) bool {
+	if s == "" {
+		return false
+	}
+	for _, r := range s {
+		if r < '0' || r > '9' {
+			return false
+		}
+	}
+	return true
 }
