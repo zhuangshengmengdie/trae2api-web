@@ -79,3 +79,28 @@ func (h *Handler) adminCredits(w http.ResponseWriter, r *http.Request) {
 		"accounts":   out,
 	})
 }
+
+// adminTriggerCheckin 手动触发全账号签到（幂等：已签到的跳过）。
+// 需要 admin 鉴权。返回逐账号结果与汇总。
+func (h *Handler) adminTriggerCheckin(w http.ResponseWriter, r *http.Request) {
+	if h.cfg.CheckinNow == nil {
+		writeJSON(w, http.StatusNotImplemented, map[string]any{
+			"error": "checkin not wired (scheduler not attached)",
+		})
+		return
+	}
+	results := h.cfg.CheckinNow()
+	summary := map[string]int{"ok": 0, "already": 0, "failed": 0, "skipped": 0, "auth_invalid": 0}
+	for _, res := range results {
+		if _, ok := summary[res.Status]; ok {
+			summary[res.Status]++
+		} else {
+			summary["failed"]++
+		}
+	}
+	writeJSON(w, http.StatusOK, map[string]any{
+		"triggered_at": time.Now().Format("2006-01-02 15:04:05"),
+		"summary":      summary,
+		"results":      results,
+	})
+}

@@ -5,6 +5,7 @@ import (
 	"errors"
 	"io"
 	"net/http"
+	"net/http/httptest"
 	"strings"
 	"testing"
 
@@ -266,5 +267,64 @@ func TestCheckinStatusAndClaim(t *testing.T) {
 	}
 	if path != EpCheckinStatus {
 		t.Errorf("path=%s", path)
+	}
+}
+
+func TestCheckinDeviceIDNormalization(t *testing.T) {
+	cases := []struct {
+		name string
+		in   string
+		want string
+	}{
+		{"bare hex gets aha prefix", "3ee0250fe3e0e6e03cdd8054e3a01a7b", "aha-3ee0250fe3e0e6e03cdd8054e3a01a7b"},
+		{"prefixed id left alone", "aha-3ee0250fe3e0e6e03cdd8054e3a01a7b", "aha-3ee0250fe3e0e6e03cdd8054e3a01a7b"},
+		{"whitespace trimmed", "  abc123 \n", "aha-abc123"},
+		{"empty stays empty", "", ""},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			a := &auth.Auth{DeviceID: tc.in}
+			if got := CheckinDeviceID(a); got != tc.want {
+				t.Errorf("CheckinDeviceID(%q)=%q want %q", tc.in, got, tc.want)
+			}
+		})
+	}
+}
+
+func TestCheckinSendsReqSourceAndAhaDeviceID(t *testing.T) {
+	var statusBody, claimBody, statusDevice, claimDevice string
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		body, _ := io.ReadAll(r.Body)
+		switch {
+		case strings.HasSuffix(r.URL.Path, "/checkin_credits/status"):
+			statusBody, statusDevice = string(body), r.Header.Get("X-Device-Id")
+			w.Write([]byte(`{"checked_in":false,"credits":200,"enable":true}`))
+		case strings.HasSuffix(r.URL.Path, "/checkin_credits/claim"):
+			claimBody, claimDevice = string(body), r.Header.Get("X-Device-Id")
+			w.Write([]byte(`{"code":0,"message":"success"}`))
+		default:
+			http.Error(w, "not found", 404)
+		}
+	}))
+	defer srv.Close()
+
+	c := &Client{HTTP: srv.Client(), AgentHost: srv.URL, UgHost: srv.URL, OAuthHost: srv.URL, ClientID: ClientID}
+	a := &auth.Auth{UID: "u1", AccessToken: "at", DeviceID: "3ee0250fe3e0e6e03cdd8054e3a01a7b"}
+
+	if _, _, _, err := c.CheckinStatus(a); err != nil {
+		t.Fatalf("status: %v", err)
+	}
+	if err := c.CheckinClaim(a); err != nil {
+		t.Fatalf("claim: %v", err)
+	}
+	for name, body := range map[string]string{"status": statusBody, "claim": claimBody} {
+		if !strings.Contains(body, `"req_source":2`) {
+			t.Errorf("%s body=%q want req_source=2", name, body)
+		}
+	}
+	for name, dev := range map[string]string{"status": statusDevice, "claim": claimDevice} {
+		if dev != "aha-3ee0250fe3e0e6e03cdd8054e3a01a7b" {
+			t.Errorf("%s X-Device-Id=%q want aha- prefixed", name, dev)
+		}
 	}
 }

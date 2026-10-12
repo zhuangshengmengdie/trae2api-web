@@ -341,3 +341,66 @@ func TestHealthz(t *testing.T) {
 		t.Errorf("code=%d", rec.Code)
 	}
 }
+
+func TestAdminTriggerCheckin(t *testing.T) {
+	called := false
+	h := NewHandler(Config{
+		Pool:     testPoolWith(&auth.Auth{UID: "u1", AccessToken: "at1", ExpiresAt: 9999999999}),
+		Upstream: upstream.New(),
+		APIKey:   "secret",
+		CheckinNow: func() []CheckinResult {
+			called = true
+			return []CheckinResult{{UID: "u1", Nick: "n1", Status: "ok", Remain: 200}}
+		},
+	})
+	req := httptest.NewRequest("POST", "/admin/api/checkin", nil)
+	req.Header.Set("Authorization", "Bearer secret")
+	rec := httptest.NewRecorder()
+	h.ServeHTTP(rec, req)
+	if rec.Code != 200 {
+		t.Fatalf("code=%d body=%s", rec.Code, rec.Body)
+	}
+	if !called {
+		t.Errorf("CheckinNow not called")
+	}
+	var resp map[string]any
+	if err := json.Unmarshal(rec.Body.Bytes(), &resp); err != nil {
+		t.Fatalf("resp not json: %v", err)
+	}
+	summary := resp["summary"].(map[string]any)
+	if summary["ok"] != float64(1) {
+		t.Errorf("summary=%v want ok=1", summary)
+	}
+}
+
+func TestAdminTriggerCheckinUnauthorized(t *testing.T) {
+	h := NewHandler(Config{
+		Pool:     testPoolWith(&auth.Auth{UID: "u1", AccessToken: "at1", ExpiresAt: 9999999999}),
+		Upstream: upstream.New(),
+		APIKey:   "secret",
+		CheckinNow: func() []CheckinResult {
+			return nil
+		},
+	})
+	req := httptest.NewRequest("POST", "/admin/api/checkin", nil)
+	req.Header.Set("Authorization", "Bearer wrong")
+	rec := httptest.NewRecorder()
+	h.ServeHTTP(rec, req)
+	if rec.Code != 401 {
+		t.Errorf("code=%d want 401", rec.Code)
+	}
+}
+
+func TestAdminTriggerCheckinNotWired(t *testing.T) {
+	h := NewHandler(Config{
+		Pool:     testPoolWith(&auth.Auth{UID: "u1", AccessToken: "at1", ExpiresAt: 9999999999}),
+		Upstream: upstream.New(),
+		// CheckinNow nil
+	})
+	req := httptest.NewRequest("POST", "/admin/api/checkin", nil)
+	rec := httptest.NewRecorder()
+	h.ServeHTTP(rec, req)
+	if rec.Code != 501 {
+		t.Errorf("code=%d want 501", rec.Code)
+	}
+}

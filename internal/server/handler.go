@@ -29,6 +29,18 @@ type Config struct {
 	ErrCooldown  time.Duration // 错误冷却，默认 10m
 	RefreshSkew  time.Duration // token 预刷新窗口，默认 24h
 	DefaultModel string        // 默认 glm-5.2
+	// CheckinNow 手动触发全账号签到（由 scheduler 提供），nil 则 /admin/api/checkin 返回 501。
+	CheckinNow func() []CheckinResult
+}
+
+// CheckinResult 透出 scheduler.CheckinResult，避免 server 包直接依赖 scheduler 包。
+// 字段与 scheduler.CheckinResult 保持一致。
+type CheckinResult struct {
+	UID    string `json:"uid"`
+	Nick   string `json:"nick,omitempty"`
+	Status string `json:"status"`
+	Detail string `json:"detail,omitempty"`
+	Remain int64  `json:"remain,omitempty"`
 }
 
 // maxBodyBytes 请求体大小上限（8MB），超过返回 413。
@@ -85,6 +97,8 @@ func NewHandler(cfg Config) *Handler {
 	h.mux.HandleFunc("PATCH /admin/api/accounts/{uid}", h.withAdminAuth(h.adminPatchAccount))
 	h.mux.HandleFunc("POST /admin/api/accounts/{uid}/refresh", h.withAdminAuth(h.adminRefreshAccount))
 	h.mux.HandleFunc("GET /admin/api/accounts/{uid}/json", h.adminAccountJSON)
+	// 手动触发全账号签到（幂等：已签到的跳过）
+	h.mux.HandleFunc("POST /admin/api/checkin", h.withAdminAuth(h.adminTriggerCheckin))
 	// Web 登录闭环
 	h.mux.HandleFunc("POST /admin/api/login", h.withAdminAuth(h.adminLoginStart))
 	h.mux.HandleFunc("GET /admin/api/login/result", h.adminLoginResult)

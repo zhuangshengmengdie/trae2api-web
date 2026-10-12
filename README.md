@@ -131,6 +131,30 @@ curl -X POST http://127.0.0.1:7864/v1/chat/completions \
 ./credit.sh <UID>
 ```
 
+## 自动签到
+
+服务内置全自动签到，无需手动干预（签到走官方 API，非 UI 自动化）：
+
+- **每日定时**：`config.json` 中 `schedule.checkin_hour`（默认 9 点）自动对全部账号签到；
+- **启动补签**：服务在签到整点之后启动/重启时，约 90 秒后自动补签当天（已签到的跳过，不会重复）；
+- **签到前保活**：签到前自动刷新 2 小时内过期的 token，过期 token 不会导致签到失败；
+- **失败重试**：单账号签到失败指数退避重试 3 次；
+- **签到后解冻**：签到成功后刷新积分，积分 > 0 的冷却账号自动恢复可用。
+
+手动触发（需要 `Authorization: Bearer $TW2A_API_KEY`）：
+
+```bash
+curl -X POST http://127.0.0.1:7864/admin/api/checkin \
+  -H "Authorization: Bearer $TW2A_API_KEY"
+```
+
+返回逐账号结果（`ok` / `already` / `failed` / `skipped` / `auth_invalid`）与汇总。
+`./signin.sh` 仍可用于 cron 定时或手动一次性批量签到。
+
+> 9074 说明：上游收紧签到校验后，请求体必须带 `{"req_source":2}`（对齐官方客户端），
+> 且 `X-Device-Id` 须为官方形状的 `aha-<hex>`（裸 hex 会被以 9074 拒绝）。
+> 本项目签到 status/claim 已按此对齐；已有账号无需重新登录，header 会自动规范化。
+
 ## 配置项参考
 
 所有配置项均可通过环境变量或 `config.json` 进行调整：

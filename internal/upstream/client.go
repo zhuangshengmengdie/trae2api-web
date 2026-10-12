@@ -319,21 +319,44 @@ func (c *Client) FetchModels(a *auth.Auth) ([]ModelInfo, error) {
 	return out, nil
 }
 
+// CheckinDeviceID 返回签到接口专用的设备 ID。
+//
+// 上游签到后端按 X-Device-Id 做设备级每日限额，且只认官方客户端的
+// aha-<hex> 形状；裸 hex 会被以 9074 拒绝（社区多人逆向验证）。
+// 已有 aha- 前缀的不动，保证同一账号始终映射到同一设备。
+func CheckinDeviceID(a *auth.Auth) string {
+	id := strings.TrimSpace(a.DeviceID)
+	if id == "" {
+		return ""
+	}
+	if strings.HasPrefix(id, "aha-") {
+		return id
+	}
+	return "aha-" + id
+}
+
 // CheckinStatus 查询签到状态。
+//
+// 官方客户端 status/claim 均 POST {"req_source":2}（SOLO/Lite）；
+// 服务端 2025-09-04 收紧活动校验后，无 body 的请求会被以 9074 拒绝。
 func (c *Client) CheckinStatus(a *auth.Auth) (checkedIn bool, credits int64, enable bool, err error) {
-	req, err := http.NewRequest(http.MethodPost, c.ugBase()+EpCheckinStatus, bytes.NewReader([]byte("{}")))
+	req, err := http.NewRequest(http.MethodPost, c.ugBase()+EpCheckinStatus, bytes.NewReader([]byte(`{"req_source":2}`)))
 	if err != nil {
 		return false, 0, false, err
 	}
 	UgHeaders(req, a)
+	if did := CheckinDeviceID(a); did != "" {
+		req.Header.Set("X-Device-Id", did)
+	}
 	data, err := c.doJSON(req)
 	if err != nil {
 		return false, 0, false, err
 	}
 	var resp struct {
-		CheckedIn bool  `json:"checked_in"`
-		Credits   int64 `json:"credits"`
-		Enable    bool  `json:"enable"`
+		CheckedIn    bool  `json:"checked_in"`
+		DidCheckedIn bool  `json:"did_checked_in"` // 设备级每日去重
+		Credits      int64 `json:"credits"`
+		Enable       bool  `json:"enable"`
 	}
 	if err := json.Unmarshal(data, &resp); err != nil {
 		return false, 0, false, fmt.Errorf("checkin status parse: %w", err)
@@ -341,13 +364,16 @@ func (c *Client) CheckinStatus(a *auth.Auth) (checkedIn bool, credits int64, ena
 	return resp.CheckedIn, resp.Credits, resp.Enable, nil
 }
 
-// CheckinClaim 执行签到。
+// CheckinClaim 执行签到（body 对齐官方客户端，设备 ID 用 aha- 形状）。
 func (c *Client) CheckinClaim(a *auth.Auth) error {
-	req, err := http.NewRequest(http.MethodPost, c.ugBase()+EpCheckinClaim, bytes.NewReader([]byte("{}")))
+	req, err := http.NewRequest(http.MethodPost, c.ugBase()+EpCheckinClaim, bytes.NewReader([]byte(`{"req_source":2}`)))
 	if err != nil {
 		return err
 	}
 	UgHeaders(req, a)
+	if did := CheckinDeviceID(a); did != "" {
+		req.Header.Set("X-Device-Id", did)
+	}
 	_, err = c.doJSON(req)
 	return err
 }

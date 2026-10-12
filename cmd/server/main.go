@@ -61,11 +61,23 @@ func main() {
 		ErrThreshold: cfg.Cooldown.ErrThresh,
 		ErrCooldown:  cfg.ErrCooldownDur,
 		DefaultModel: cfg.DefaultModel,
+		CheckinNow: func() []server.CheckinResult {
+			out := make([]server.CheckinResult, 0)
+			for _, r := range sch.RunCheckinNow() {
+				out = append(out, server.CheckinResult{
+					UID: r.UID, Nick: r.Nick, Status: r.Status,
+					Detail: r.Detail, Remain: r.Remain,
+				})
+			}
+			return out
+		},
 	})
 
 	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
 	defer stop()
 	go sch.Run(ctx)
+	// 启动后补签：服务在签到整点之后启动/重启时，不再漏签当天。
+	go sch.RunCheckinOnStartup(ctx, 90*time.Second)
 
 	srv := &http.Server{
 		Addr:              cfg.Listen,
