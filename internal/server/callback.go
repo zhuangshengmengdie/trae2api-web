@@ -26,8 +26,9 @@ const loginTraceIDHexLen = 16
 // BuildLoginURL 构造 TRAE 登录 URL（复刻 login.sh 的参数集）。
 // callbackURL 是 TRAE 登录成功后的重定向落点（如 http://127.0.0.1:7864/authorize）。
 // machineID/deviceID 必须与落盘 auth 文件共用同一对（hex32），保证登录态与凭证一致。
-// loginTraceID 为随机 hex16（复刻 login.sh 的 secrets.token_hex(8)）；
-// Trae 收到随机 traceID 会生成自己的数字 ID 并在回调中返回，该数字 ID 即账号绑定的真实设备号。
+// 注意：不带 login_trace_id 参数；实测发现只要带了该参数 Trae 就会原样返回，
+// 不带时 Trae 会生成自己的数字 loginTraceID 并在回调中返回，该数字即账号绑定的真实设备号。
+// loginTraceID 参数保留用于测试兼容，实际调用时传空字符串即可。
 func BuildLoginURL(machineID, deviceID, callbackURL, loginTraceID string) string {
 	v := url.Values{}
 	v.Set("login_version", "1")
@@ -37,9 +38,7 @@ func BuildLoginURL(machineID, deviceID, callbackURL, loginTraceID string) string
 	v.Set("auth_type", "local")
 	v.Set("client_id", upstream.ClientID)
 	v.Set("redirect", "0")
-	// login_trace_id：随机 hex16（复刻 login.sh）；Trae 会生成自己的数字 ID 返回。
-	return upstream.ConsoleHost + "/authorization?" + v.Encode() +
-		"&login_trace_id=" + url.QueryEscape(loginTraceID) +
+	urlStr := upstream.ConsoleHost + "/authorization?" + v.Encode() +
 		"&auth_callback_url=" + url.QueryEscape(callbackURL) +
 		"&machine_id=" + url.QueryEscape(machineID) +
 		"&device_id=" + url.QueryEscape(deviceID) +
@@ -50,6 +49,11 @@ func BuildLoginURL(machineID, deviceID, callbackURL, loginTraceID string) string
 		"&x_os_version=1.0" +
 		"&x_app_version=" + url.QueryEscape(loginAppVersion) +
 		"&x_app_type=stable"
+	// 仅当显式传入非空 traceID 时才带上（测试用）；正常流程不带，让 Trae 生成数字 ID。
+	if loginTraceID != "" {
+		urlStr += "&login_trace_id=" + url.QueryEscape(loginTraceID)
+	}
+	return urlStr
 }
 
 // machineTraceID 由 machineID+deviceID 派生一个稳定的 login_trace_id（hex16）。

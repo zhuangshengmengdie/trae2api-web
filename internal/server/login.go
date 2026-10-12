@@ -75,14 +75,15 @@ func (h *Handler) adminLoginStart(w http.ResponseWriter, r *http.Request) {
 		writeOpenAIError(w, http.StatusInternalServerError, "rand_failed", err.Error())
 		return
 	}
-	// login_trace_id 用随机 hex16（复刻 login.sh 的 secrets.token_hex(8)）；
-	// Trae 收到后会生成自己的数字 ID 并在回调中返回，该数字即真实绑定设备号。
-	loginTraceID, err := randomHex(8) // hex16
+	// 不带 login_trace_id：实测 Trae 在缺省该参数时会生成自己的数字 loginTraceID
+	// 并在回调中返回，该数字即账号绑定的真实设备号，可解决签到静默丢弃。
+	// pending 仍保留随机 loginTraceID 字段用于潜在的精确匹配，但主要依赖数字 ID 回退逻辑。
+	loginTraceID, err := randomHex(8) // hex16，仅存档，实际不发送
 	if err != nil {
 		writeOpenAIError(w, http.StatusInternalServerError, "rand_failed", err.Error())
 		return
 	}
-	loginURL := BuildLoginURL(machineID, deviceID, callbackURL, loginTraceID)
+	loginURL := BuildLoginURL(machineID, deviceID, callbackURL, "")
 
 	pendingID, err := randomHex(8) // hex16
 	if err != nil {
