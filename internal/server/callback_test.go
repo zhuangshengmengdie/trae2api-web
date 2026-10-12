@@ -155,8 +155,9 @@ func TestBuildLoginURL(t *testing.T) {
 	machineID := "abcdef0123456789abcdef0123456789"
 	deviceID := "0123456789abcdef0123456789abcdef"
 	cb := "http://127.0.0.1:7864/authorize"
+	traceID := "a1b2c3d4e5f60718"
 
-	u := BuildLoginURL(machineID, deviceID, cb)
+	u := BuildLoginURL(machineID, deviceID, cb, traceID)
 	if !strings.HasPrefix(u, "https://www.trae.cn/authorization?") {
 		t.Fatalf("url prefix wrong: %s", u)
 	}

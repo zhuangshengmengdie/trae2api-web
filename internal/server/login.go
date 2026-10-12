@@ -35,6 +35,7 @@ type pendingLogin struct {
 	state       pendingState
 	machineID   string
 	deviceID    string
+	loginTraceID string // 发送给 Trae 的随机 login_trace_id（hex16），用于回调关联
 	callbackURL string // auth_callback_url（含端口）
 	createdAt   time.Time
 
@@ -74,7 +75,14 @@ func (h *Handler) adminLoginStart(w http.ResponseWriter, r *http.Request) {
 		writeOpenAIError(w, http.StatusInternalServerError, "rand_failed", err.Error())
 		return
 	}
-	loginURL := BuildLoginURL(machineID, deviceID, callbackURL)
+	// login_trace_id 用随机 hex16（复刻 login.sh 的 secrets.token_hex(8)）；
+	// Trae 收到后会生成自己的数字 ID 并在回调中返回，该数字即真实绑定设备号。
+	loginTraceID, err := randomHex(8) // hex16
+	if err != nil {
+		writeOpenAIError(w, http.StatusInternalServerError, "rand_failed", err.Error())
+		return
+	}
+	loginURL := BuildLoginURL(machineID, deviceID, callbackURL, loginTraceID)
 
 	pendingID, err := randomHex(8) // hex16
 	if err != nil {
@@ -82,11 +90,12 @@ func (h *Handler) adminLoginStart(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	pl := &pendingLogin{
-		state:       pendingStateActive,
-		machineID:   machineID,
-		deviceID:    deviceID,
-		callbackURL: callbackURL,
-		createdAt:   time.Now(),
+		state:        pendingStateActive,
+		machineID:    machineID,
+		deviceID:     deviceID,
+		loginTraceID: loginTraceID,
+		callbackURL:  callbackURL,
+		createdAt:    time.Now(),
 	}
 	h.loginMu.Lock()
 	h.logins[pendingID] = pl
@@ -262,17 +271,38 @@ func (h *Handler) markPendingByMachine(machineID, traceID string, state pendingS
 	}
 }
 
-// getPendingByTrace 用 loginTraceID（= machineTraceID(machine,device)）反查 pending。
-// TRAE 回调不回传 machine_id/device_id，但回传 loginTraceID，可据此关联回登录时生成的 id 对。
+// getPendingByTrace 用 loginTraceID 反查 pending。
+// 我们发送随机 hex16 的 login_trace_id；Trae 会生成自己的数字 ID 并在回调中返回。
+// 若回调的 traceID 为数字（Trae 生成的真实设备号），则返回最近的 active pending（通常同时只有一个登录在进行）。
+// 若为 hex（旧逻辑或 Trae 原样返回），则按存储的 loginTraceID 匹配。
 func (h *Handler) getPendingByTrace(traceID string) (*pendingLogin, bool) {
 	if traceID == "" {
 		return nil, false
 	}
 	h.loginMu.Lock()
 	defer h.loginMu.Unlock()
+	// 先按存储的 loginTraceID 精确匹配
 	for _, pl := range h.logins {
-		if machineTraceID(pl.machineID, pl.deviceID) == traceID {
+		if pl.loginTraceID == traceID {
 			return pl, true
+		}
+		// 兼容旧逻辑：派生匹配
+		if pl.loginTraceID == "" && machineTraceID(pl.machineID, pl.deviceID) == traceID {
+			return pl, true
+		}
+	}
+	// Trae 生成的数字 ID：返回最近的 active pending
+	if isNumericID(traceID) {
+		var best *pendingLogin
+		for _, pl := range h.logins {
+			if pl.state == pendingStateActive {
+				if best == nil || pl.createdAt.After(best.createdAt) {
+					best = pl
+				}
+			}
+		}
+		if best != nil {
+			return best, true
 		}
 	}
 	return nil, false

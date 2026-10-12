@@ -26,7 +26,9 @@ const loginTraceIDHexLen = 16
 // BuildLoginURL 构造 TRAE 登录 URL（复刻 login.sh 的参数集）。
 // callbackURL 是 TRAE 登录成功后的重定向落点（如 http://127.0.0.1:7864/authorize）。
 // machineID/deviceID 必须与落盘 auth 文件共用同一对（hex32），保证登录态与凭证一致。
-func BuildLoginURL(machineID, deviceID, callbackURL string) string {
+// loginTraceID 为随机 hex16（复刻 login.sh 的 secrets.token_hex(8)）；
+// Trae 收到随机 traceID 会生成自己的数字 ID 并在回调中返回，该数字 ID 即账号绑定的真实设备号。
+func BuildLoginURL(machineID, deviceID, callbackURL, loginTraceID string) string {
 	v := url.Values{}
 	v.Set("login_version", "1")
 	v.Set("auth_from", "solo")
@@ -35,10 +37,9 @@ func BuildLoginURL(machineID, deviceID, callbackURL string) string {
 	v.Set("auth_type", "local")
 	v.Set("client_id", upstream.ClientID)
 	v.Set("redirect", "0")
-	// login_trace_id：随机性由调用方注入（time 不可用，见 newLoginTraceID）；
-	// 这里只负责拼装，调用方传入已生成的 trace id。
+	// login_trace_id：随机 hex16（复刻 login.sh）；Trae 会生成自己的数字 ID 返回。
 	return upstream.ConsoleHost + "/authorization?" + v.Encode() +
-		"&login_trace_id=" + url.QueryEscape(machineTraceID(machineID, deviceID)) +
+		"&login_trace_id=" + url.QueryEscape(loginTraceID) +
 		"&auth_callback_url=" + url.QueryEscape(callbackURL) +
 		"&machine_id=" + url.QueryEscape(machineID) +
 		"&device_id=" + url.QueryEscape(deviceID) +
