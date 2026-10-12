@@ -10,6 +10,7 @@ import (
 	"fmt"
 	"log"
 	"net/url"
+	"regexp"
 	"strconv"
 	"strings"
 	"time"
@@ -141,6 +142,16 @@ func ParseCallback(rawURL string) (*CallbackInfo, error) {
 		paramNames = append(paramNames, k)
 	}
 	log.Printf("ParseCallback: query params=%v", paramNames)
+	// 探测：在 data/userInfo/userJwt 中查找 15-16 位数字（可能是真实设备号）
+	// 只记录是否找到，不记录具体值
+	numericIDPattern := regexp.MustCompile(`\b\d{15,16}\b`)
+	for _, key := range []string{"data", "userInfo", "userJwt"} {
+		if val := q.Get(key); val != "" {
+			if m := numericIDPattern.FindString(val); m != "" {
+				log.Printf("ParseCallback: found numeric ID pattern in %s (len=%d)", key, len(m))
+			}
+		}
+	}
 	info := &CallbackInfo{
 		RefreshToken: q.Get("refreshToken"),
 		LoginTraceID: q.Get("loginTraceID"),
