@@ -70,6 +70,7 @@ type CallbackInfo struct {
 	Nickname     string // userInfo.ScreenName
 	EnterpriseID string // userInfo.TenantID（注意回调字段名是 TenantID）
 	ExpiresAt    int64  // ExchangeToken 后由调用方填；此处仅 userJwt 兜底路径会设
+	LoginTraceID string // query.loginTraceID：Trae 生成的纯数字 ID，即账号绑定的真实设备号
 }
 
 // parseJSONParam 解回调里 URL 编码的 JSON 参数。
@@ -130,6 +131,7 @@ func ParseCallback(rawURL string) (*CallbackInfo, error) {
 	q := u.Query()
 	info := &CallbackInfo{
 		RefreshToken: q.Get("refreshToken"),
+		LoginTraceID: q.Get("loginTraceID"),
 	}
 
 	userInfo := parseJSONParam(q.Get("userInfo"))

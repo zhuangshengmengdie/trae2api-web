@@ -158,6 +158,11 @@ func (h *Handler) importFromCallback(req importRequest) (*auth.Auth, error) {
 		return nil, err
 	}
 	// 无 refreshToken 但有 accessToken（userJwt 兜底）→ 直接用，不 ExchangeToken
+	// deviceID 优先用请求里带的；没有则用回调里的 loginTraceID（Trae 生成的纯数字真实设备号）。
+	deviceID := req.DeviceID
+	if deviceID == "" && isNumericID(info.LoginTraceID) {
+		deviceID = info.LoginTraceID
+	}
 	a := &auth.Auth{
 		AccessToken:  info.AccessToken,
 		RefreshToken: info.RefreshToken,
@@ -167,7 +172,7 @@ func (h *Handler) importFromCallback(req importRequest) (*auth.Auth, error) {
 		Domain:       "trae.cn",
 		ApiHost:      "https://api.trae.com.cn",
 		MachineID:    req.MachineID,
-		DeviceID:     req.DeviceID,
+		DeviceID:     deviceID,
 		ExpiresAt:    info.ExpiresAt,
 	}
 	// 有 refreshToken → ExchangeToken 换新 access token（轮换 refreshToken）
